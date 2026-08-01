@@ -1,0 +1,27 @@
+[project]
+name = "speech-to-text"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "hackingjack", email = "htcjon10@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "pynput>=1.8.2",
+    "requests>=2.34.2",
+    "sounddevice>=0.5.5",
+    "soundfile>=0.14.0",
+]
+
+[project.scripts]
+speech-to-text = "speech_to_text:main"
+
+[build-system]
+requires = ["uv_build>=0.12.1,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.workspace]
+members = [
+    "talegjenkjenning",
+]
