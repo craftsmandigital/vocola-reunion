@@ -44,7 +44,7 @@ For å kunne starte talegjenkjenningen med et enkelt dobbeltklikk og ha full kon
 1. Høyreklikk på skrivebordet ditt og velg **Ny** -> **Snarvei** (Shortcut).
 2. I feltet "Skriv inn plasseringen for elementet", lim inn følgende kommando (alt på én linje):
    ```cmd
-   wt.exe -w -1 --pos 1300,100 --size 60,12 cmd.exe /k "cd /d C:\dev\python\speech-to-text && uv run main.py"
+   C:\Users\jviks\AppData\Local\Microsoft\WindowsApps\wt.exe -w -1 --pos 900,1030 --size 12,10 cmd.exe /k "cd /d C:\Users\jviks\Sync\windows-dev\python\speech-to-text && uv run main.py"
    ```
    *(Erstatt `C:\dev\python\speech-to-text` med den nøyaktige banen til mappen der du har lagret skriptet ditt).*
 3. Klikk **Neste**, gi snarveien navnet **Whisper Talegjenkjenning**, og klikk **Fullfør**.
