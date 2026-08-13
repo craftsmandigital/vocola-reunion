@@ -37,7 +37,7 @@ Bruk pakkebehandleren `uv` for å sette opp miljøet og installere avhengigheten
 
 ```bash
 # Opprett virtuelt miljø og installer pakker
-uv add sounddevice soundfile pynput requests pyyaml
+uv add sounddevice soundfile pynput requests pyyaml pyperclip
 ```
 
 ---
@@ -67,11 +67,22 @@ behavior:
   toggle_debounce_seconds: 0.4   # Minimum tid mellom to triggere av toggle.
   main_loop_sleep_seconds: 0.5   # Hvor ofte hovedløkken sjekker Ctrl+C.
 
+paste:
+  # Hvordan teksten leveres til det aktive programmet.
+  method: "ctrl_v"               # direct | ctrl_v | ctrl_shift_v | shift_insert
+  paste_delay: 0.05              # Sekunder mellom kopiering og liming.
+  # Windows: skjuler teksten for Win+V-historikk og sky-synk (privacy-formater).
+  exclude_from_history: true
+  # Gjenopprett forrige utklippstavle-innhold etter liming.
+  restore_clipboard: true
+  # Ventetid (sek) etter liming før utklippstavlen gjenopprettes.
+  restore_delay: 0.15
+
 ui:
   title_prefix: "Whisper-to-Text"
-  title_ready: "🔵 [KLAR]"
-  title_recording: "🔴 [OPPTAK...]"
-  title_processing: "⏳ [BEHANDLER...]"
+  title_ready: "🔵 [Ready]"
+  title_recording: "🔴 [Recording...]"
+  title_processing: "⏳ [Processing...]"
 ```
 
 ### Viktige ting å vite
@@ -87,6 +98,17 @@ ui:
   ```
 
   Alle andre seksjoner bruker da standardverdiene.
+
+### Innlimingsmetoder (`paste.method`)
+
+* **`direct`** — skriver tegn for tegn via pynput. **Eneste metode som ikke rører utklippstavlen.** Tregt for lange tekster; Unicode/emoji kan feile.
+* **`ctrl_v`** — legger teksten i utklippstavlen og sender `Ctrl+V`. Universell og rask. Standardvalget.
+* **`ctrl_shift_v`** — sender `Ctrl+Shift+V`. Limer inn **ren tekst** i mange apper (nettlesere, VS Code, Slack, Teams). Fungerer derimot ikke i Notepad/Word.
+* **`shift_insert`** — klassisk snarvei som finnes i de fleste Windows-apper. Mindre universell enn `Ctrl+V`.
+
+> **Om Windows clipboard history (Win+V):** Alle clipboard-metodene (`ctrl_v`, `ctrl_shift_v`, `shift_insert`) skriver teksten til utklippstavlen. Når `exclude_from_history: true` (standard), settes de samme privacy-formatene som KeePass/Chrome Inkognito bruker, slik at teksten **ikke** dukker opp i Windows sin `Win+V`-historikk eller sky-synk. Med `restore_clipboard: true` (standard) gjenopprettes i tillegg forrige utklippstavle-innhold etter liming.
+>
+> **Begrensning:** Privacy-formatene er en samarbeidsprotokoll, ikke håndheving. Windows' egen historikk og velkjente verktøy (CopyQ, Ditto, KeePass) respekterer dem, men enkelte tredjeparts clipboard-managere kan fortsatt registrere teksten. `direct` skriver direkte og rører aldri utklippstavlen.
 
 ---
 

@@ -32,6 +32,26 @@ behavior:
   # Hvor ofte hovedløkken sjekker avslutning (Ctrl+C).
   main_loop_sleep_seconds: 0.5
 
+paste:
+  # Hvordan teksten skal leveres til det aktive programmet.
+  # Valg:
+  #   direct        - Skriver tegn for tegn via pynput. Ingen spor i utklippstavlen.
+  #   ctrl_v        - Legger i utklippstavlen, sender Ctrl+V.
+  #   ctrl_shift_v  - Legger i utklippstavlen, sender Ctrl+Shift+V (ren tekst i mange apper).
+  #   shift_insert  - Legger i utklippstavlen, sender Shift+Insert.
+  method: "shift_insert"
+  # Tid (sekunder) mellom kopiering til utklippstavle og liming.
+  paste_delay: 0.05
+  # Windows: legg til private clipboard-formater slik at teksten IKKE havner i
+  # Win+V-historikk eller sky-synk (samme mekanisme som KeePass og Chrome Inkognito).
+  # Merk: dette er en samarbeidsprotokoll - enkelte tredjeparts clipboard-managere
+  # kan likevel registrere teksten.
+  exclude_from_history: true
+  # Gjenopprett forrige utklippstavle-innhold etter at teksten er limt inn.
+  restore_clipboard: true
+  # Ventetid (sek) etter liming før utklippstavlen gjenopprettes.
+  restore_delay: 0.15
+
 ui:
   # Vises i terminalvinduet. Emojis kan byttes fritt.
   title_prefix: "Whisper-to-Text"
