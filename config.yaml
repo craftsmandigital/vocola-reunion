@@ -1,0 +1,40 @@
+# Whisper-to-Text — lokal konfigurasjon
+# Alt av taster, URL-er og oppførsel kan justeres her uten å røre Python-koden.
+# Hvis filen mangler, faller programmet tilbake til innebygde standardverdier
+# og skriver ut en advarsel ved oppstart.
+
+server:
+  # URL til din lokale faster-whisper-server (Docker).
+  url: "http://192.168.1.200:8000/v1/audio/transcriptions"
+  # Modellnavn som serveren forventer (OpenAI-kompatibelt endepunkt).
+  model: "whisper-1"
+  # Tving språk for bedre treffsikkerhet (f.eks. "no", "en"). Tom streng = auto.
+  language: ""
+  # Nettverks-timeout i sekunder.
+  timeout: 30
+
+shortcuts:
+  # Snarvei for å starte/stoppe opptak.
+  # Brukes både på Windows (via mapping-tabell) og Mac/Linux (pynput GlobalHotKeys).
+  toggle: "<ctrl>+<shift>+i"
+  # Snarvei for å avbryte et pågående opptak (sletter lyden, skriver ikke ut).
+  cancel: "<esc>"
+
+audio:
+  # Samplerate i Hz. Whisper forventer 16000.
+  sample_rate: 16000
+  # Mono (1) er tilstrekkelig for tale.
+  channels: 1
+
+behavior:
+  # Minimum tid mellom to triggere av toggle (unngår repeterte tastetrykk).
+  toggle_debounce_seconds: 0.4
+  # Hvor ofte hovedløkken sjekker avslutning (Ctrl+C).
+  main_loop_sleep_seconds: 0.5
+
+ui:
+  # Vises i terminalvinduet. Emojis kan byttes fritt.
+  title_prefix: "Whisper-to-Text"
+  title_ready: "🔵 [Ready]"
+  title_recording: "🔴 [Recording...]"
+  title_processing: "⏳ [Processing...]"
