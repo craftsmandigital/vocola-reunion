@@ -1,8 +1,10 @@
 # Whisper-to-Text (Lokal Talegjenkjenning)
 
-Dette er en lettvektig Python-klient som lar deg diktere tekst direkte der markøren (cursor) din befinner seg, uansett hvilket program du jobber i. Ved å trykke på den globale snarveien **`Ctrl + Shift + I`** starter og stopper du opptaket, som deretter transkriberes av en lokal `faster-whisper-server` i Docker. 
+Dette er en lettvektig Python-klient som lar deg diktere tekst direkte der markøren (cursor) din befinner seg, uansett hvilket program du jobber i. Ved å trykke på den globale snarveien **`Ctrl + Shift + I`** starter og stopper du opptaket, som deretter transkriberes av en lokal `faster-whisper-server` i Docker.
 
 Hvis du ombestemmer deg underveis, kan du når som helst trykke **`Escape`** for å avbryte og slette opptaket.
+
+> **Standard snarveier:** `Ctrl + Shift + I` (toggle) og `Escape` (avbryt). Begge kan endres i [`config.yaml`](#konfigurasjon-configyaml) — server-URL, lydinnstillinger, terminaltitler og annen oppførsel ligger også der.
 
 ---
 
@@ -35,8 +37,56 @@ Bruk pakkebehandleren `uv` for å sette opp miljøet og installere avhengigheten
 
 ```bash
 # Opprett virtuelt miljø og installer pakker
-uv add sounddevice soundfile pynput requests
+uv add sounddevice soundfile pynput requests pyyaml
 ```
+
+---
+
+## Konfigurasjon (`config.yaml`)
+
+Alle viktige parametre — server-URL, snarveier, lydinnstillinger, terminaltitler og oppførsel — ligger i `config.yaml` i samme mappe som `main.py`. Filen støtter kommentarer, så du kan notere hvorfor du har valgt en bestemt verdi.
+
+### Standardinnhold
+
+```yaml
+server:
+  url: "http://192.168.1.200:8000/v1/audio/transcriptions"
+  model: "whisper-1"
+  language: ""          # Tom = auto. Sett f.eks. "no" eller "en" for å låse språket.
+  timeout: 30           # Nettverks-timeout i sekunder.
+
+shortcuts:
+  toggle: "<ctrl>+<shift>+i"   # Start/stopp opptak (Windows + Mac/Linux).
+  cancel: "<esc>"              # Avbryt pågående opptak.
+
+audio:
+  sample_rate: 16000    # Hz. Whisper forventer 16000.
+  channels: 1           # Mono (1) holder for tale.
+
+behavior:
+  toggle_debounce_seconds: 0.4   # Minimum tid mellom to triggere av toggle.
+  main_loop_sleep_seconds: 0.5   # Hvor ofte hovedløkken sjekker Ctrl+C.
+
+ui:
+  title_prefix: "Whisper-to-Text"
+  title_ready: "🔵 [KLAR]"
+  title_recording: "🔴 [OPPTAK...]"
+  title_processing: "⏳ [BEHANDLER...]"
+```
+
+### Viktige ting å vite
+
+* **Hvis `config.yaml` mangler**, faller programmet tilbake til disse standardverdiene og skriver ut en advarsel ved oppstart. Du kan slette filen trygt for å tilbakestille alt.
+* **Snarveier** bruker pynput sitt strengformat både på Windows og Mac/Linux, så `<ctrl>+<shift>+i` fungerer likt overalt. Endre til f.eks. `<ctrl>+<shift>+r` hvis `Ctrl+Shift+I` kolliderer med noe i arbeidsflyten din.
+* **Windows-blokkeringen** (se neste avsnitt) bruker samme snarvei-streng — VK-koden for hovedtasten avledes automatisk. Du trenger ikke endre noe i koden for å bytte snarvei.
+* **Kun delvise overskrivinger** er OK. Hvis du bare vil endre URL, kan du f.eks. lage en minimal fil:
+
+  ```yaml
+  server:
+    url: "http://10.0.0.50:9000/v1/audio/transcriptions"
+  ```
+
+  Alle andre seksjoner bruker da standardverdiene.
 
 ---
 
