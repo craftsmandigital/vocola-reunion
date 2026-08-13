@@ -1,12 +1,9 @@
 ---
 created: 2026-07-31
-modified: 2026-07-31
+modified: 2026-08-02
 tags:
   - kravspek
   - private
----
-Her er den fullstendige, oppdaterte kravspesifikasjonen. Seksjon **8.1** er nå utvidet til å beskrive hvordan vi kan søke opp og formatere vilkårlige ord (som *"Arne Amundsen"*) hvor som helst i den nylig innleste teksten ved hjelp av en lokal historikk-buffer og relativ markørnavigasjon.
-
 ---
 
 # Kravspesifikasjon: Talegjenkjenningssystem med Vocola-syntaks

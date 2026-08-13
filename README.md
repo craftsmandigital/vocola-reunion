@@ -1,25 +1,29 @@
 # Whisper-to-Text (Lokal Talegjenkjenning)
 
-Dette er en lettvektig Python-klient som lar deg diktere tekst direkte der markøren (cursor) din befinner seg, uansett hvilket program du jobber i. Ved å trykke på den globale snarveien **`Ctrl + Shift + I`** starter og stopper du opptaket, som deretter transkriberes av en lokal `faster-whisper-server` i Docker.
+Dette er en lettvektig Python-klient som lar deg diktere tekst direkte der markøren (cursor) din befinner seg, uansett hvilket program du jobber i. Ved å trykke på den globale snarveien **`Ctrl + Shift + I`** starter og stopper du opptaket, som deretter transkriberes av en lokal `faster-whisper-server` i Docker. 
+
+Hvis du ombestemmer deg underveis, kan du når som helst trykke **`Escape`** for å avbryte og slette opptaket.
 
 ---
 
 ## Hvordan aktive brukerprogrammer påvirkes (Overstyring)
 
-Når du bruker globale snarveier i bakgrunnen, oppstår det ofte konflikter med programmene du faktisk jobber i. For eksempel vil `Ctrl + Shift + I` i nettlesere (Chrome, Edge) eller kode-editorer (VS Code) vanligvis åpne utviklerverktøyene (DevTools).
+Når du bruker globale snarveier i bakgrunnen, oppstår det ofte konflikter med programmene du faktisk jobber i. Dette programmet bruker en lavnivå system-hook (`win32_event_filter`) på Windows 11 for å fange opp og fjerne tastetrykk før de når andre aktive brukerprogrammer (f.eks. Word, Chrome eller Notepad):
 
-Dette programmet er designet spesifikt for å unngå slike bivirkninger på Windows 11:
+### 1. Selektiv blokkering av Start/Stopp (`Ctrl + Shift + I`)
+Vanligvis vil `Ctrl + Shift + I` åpne utviklerverktøyene (DevTools) i nettlesere og kode-editorer. Systemet vårt fanger opp og svelger (suppresserer) `I`-tasten når Ctrl og Shift holdes nede. Det aktive programmet mottar aldri dette tastetrykket, og du slipper uønskede bivirkninger mens du dikterer.
 
-### 1. Selektiv blokkering (Intersept)
-Klienten bruker en lavnivå Windows-hook (`win32_event_filter`). Hver gang en tast trykkes på tastaturet, blir den analysert før den sendes til Windows-kjernen:
-* Hvis du trykker `Ctrl + Shift + I`, blir tastetrykket fanget opp og **svelget** (suppressert). 
-* Det aktive programmet du jobber i (f.eks. Word, Chrome eller Notepad) mottar aldri dette tastetrykket. Dermed unngår du at uønskede menyer eller verktøy åpner seg i bakgrunnen mens du prøver å diktere.
+### 2. Avbryting og blokkering med `Escape`
+Hvis du trykker på `Escape` for å avbryte et pågående opptak, vil du som regel ikke at dette skal påvirke programmet du skriver i (for eksempel ved at en åpen dialogboks lukkes, eller at du mister markeringen i et tekstfelt). 
+* Systemet overvåker `Escape`-tasten, men **kun når opptaket faktisk kjører** (`is_recording == True`).
+* Når du trykker `Escape` under et opptak, svelges både *tast-ned* (press) og *tast-opp* (release) for Escape-tasten, slik at det aktive brukerprogrammet forblir helt uberørt.
+* Så fort opptaket er avbrutt, fungerer `Escape`-tasten helt som normalt igjen i alle programmer.
 
-### 2. Ingen låsing av tastaturet
-Blokkeringen skjer kun akkurat i det millisekundet du trykker ned og slipper `I`-tasten mens `Ctrl` og `Shift` holdes nede. Lytteren bruker pynputs interne `SuppressException` for å avbryte akkurat denne spesifikke hendelsen. Alle andre tastetrykk og modifikatorer (som å bruke `Ctrl + C`, `Shift + I` for stor I, osv.) passerer helt uforstyrret gjennom systemet.
+### 3. Ingen låsing av tastaturet
+Blokkeringen av taster skjer kun i de eksakte millisekundene de definerte kombinasjonene trykkes. Lytteren bruker pynputs interne `SuppressException` for å avbryte akkurat disse hendelsene på lavt nivå. Alle andre tastetrykk og modifikatorer passerer helt uforstyrret gjennom systemet.
 
-### 3. Forebygging av dobbel-triggering
-På Windows kjører klienten en ren `keyboard.Listener` i stedet for `keyboard.GlobalHotKeys`. Dette er fordi vi allerede håndterer logikken og tastatur-interseptet manuelt. Ved å unngå parallelle lytte-motorer elimineres risikoen for at snarveien trigges to ganger på rad (noe som ellers ville ført til at opptaket startet og stoppet øyeblikkelig, med tomme lydfiler og serverfeil som resultat).
+### 4. Forebygging av dobbel-triggering
+På Windows kjører klienten en ren `keyboard.Listener` i stedet for `keyboard.GlobalHotKeys`. Siden vi allerede håndterer logikken og tastatur-interseptet manuelt, unngår vi parallelle lytte-motorer. Dette eliminerer risikoen for at snarveien trigges to ganger på rad (noe som ellers ville ført til at opptaket startet og stoppet øyeblikkelig, med tomme lydfiler og serverfeil som resultat).
 
 ---
 
@@ -27,7 +31,7 @@ På Windows kjører klienten en ren `keyboard.Listener` i stedet for `keyboard.G
 
 Sørg for at den lokale Whisper-serveren din kjører i Docker (f.eks. på port `8000`).
 
-Bruk pakkebehandleren `uv` for å sette opp miljøet og installere avhengighetene lokalt på Windows:
+Bruk pakkebehandleren `uv` for å sette opp miljøet og installere avhengighetenene lokalt på Windows:
 
 ```bash
 # Opprett virtuelt miljø og installer pakker
@@ -44,7 +48,8 @@ For å kunne starte talegjenkjenningen med et enkelt dobbeltklikk og ha full kon
 1. Høyreklikk på skrivebordet ditt og velg **Ny** -> **Snarvei** (Shortcut).
 2. I feltet "Skriv inn plasseringen for elementet", lim inn følgende kommando (alt på én linje):
    ```cmd
-   C:\Users\jviks\AppData\Local\Microsoft\WindowsApps\wt.exe -w -1 --pos 900,1030 --size 12,10 cmd.exe /k "cd /d C:\Users\jviks\Sync\windows-dev\python\speech-to-text && uv run main.py"
+      C:\Users\jviks\AppData\Local\Microsoft\WindowsApps\wt.exe -w -1 --pos 900,1030 --size 12,10 cmd.exe /k "cd /d C:\Users\jviks\Sync\windows-dev\python\speech-to-text && uv run main.py"
+
    ```
    *(Erstatt `C:\dev\python\speech-to-text` med den nøyaktige banen til mappen der du har lagret skriptet ditt).*
 3. Klikk **Neste**, gi snarveien navnet **Whisper Talegjenkjenning**, og klikk **Fullfør**.
@@ -72,5 +77,7 @@ Når du dobbeltklikker på snarveien på skrivebordet, vil terminalvinduet åpne
 
 Du får løpende visuell tilbakemelding direkte på fane-tittelen i terminalen:
 * **`🔵 [KLAR] Whisper-to-Text`**: Systemet er i standby. Trykk `Ctrl + Shift + I` for å starte.
-* **`🔴 [OPPTAK...] Whisper-to-Text`**: Mikrofonen tar opp lyd i bakgrunnen. Snakk i vei. Trykk `Ctrl + Shift + I` på nytt for å stoppe.
+* **`🔴 [OPPTAK...] Whisper-to-Text`**: Mikrofonen tar opp lyd i bakgrunnen. Snakk i vei. 
+  * Trykk `Ctrl + Shift + I` på nytt for å stoppe opptaket og sende til transkribering.
+  * Trykk **`Escape`** for å avbryte opptaket. Lydfilen slettes og ingenting skrives ut.
 * **`⏳ [BEHANDLER...] Whisper-to-Text`**: Lydfilen sendes til Docker og transkriberes. Teksten skrives deretter ut der du har markøren din, før statusen går tilbake til Klar (🔵).

@@ -17,6 +17,7 @@ IS_WINDOWS = platform.system() == "Windows"
 user32 = None
 VK_CONTROL = 0x11
 VK_SHIFT = 0x10
+VK_ESCAPE = 0x1B  # Virtual Key Code for Escape-tasten
 
 if IS_WINDOWS:
     import ctypes
@@ -35,6 +36,9 @@ listener = None  # Holdes global slik at event-filteret på Windows kan nå den
 
 # Tidsstempel for å unngå at taste-repetisjon trigger opptaket flere ganger på rad
 last_press_time = 0.0
+
+# Sjekker om Escape ble brukt til å avbryte, slik at vi også kan blokkere tast-opp hendelsen
+escape_was_cancelled = False
 
 def set_terminal_title(title):
     """Oppdaterer tittelen på terminalvinduet/fanen på en systemuavhengig måte."""
@@ -117,6 +121,43 @@ def stop_recording():
     # Kjør transkribering og skriving i en egen tråd for ikke å blokkere tastaturopptakeren
     threading.Thread(target=transcribe_and_type, args=(temp_file_path,)).start()
 
+def cancel_recording():
+    """Avbryter opptaket umiddelbart og sletter lydfilen uten å transkribere."""
+    global is_recording, stream, recording_thread, temp_file_path
+    if not is_recording:
+        return
+
+    is_recording = False
+
+    # Stopp lydopptaket
+    if stream:
+        try:
+            stream.stop()
+            stream.close()
+        except Exception:
+            pass
+
+    # Vent til skrive-tråden har avsluttet
+    if recording_thread:
+        recording_thread.join()
+
+    print("❌ [OPPTAK AVBRUTT] Opptaket ble kansellert.")
+
+    # Slett den midlertidige lydfilen uten å gjøre noe mer
+    if temp_file_path and os.path.exists(temp_file_path):
+        try:
+            os.remove(temp_file_path)
+        except Exception as e:
+            print(f"Klarte ikke å slette avbrutt opptak: {e}")
+
+    # Sett tittelen tilbake til Klar
+    set_terminal_title("🔵 [KLAR] Whisper-to-Text")
+
+def cancel_recording_if_active():
+    """Hjelpefunksjon for Mac/Linux som kalles via GlobalHotKeys."""
+    if is_recording:
+        cancel_recording()
+
 def transcribe_and_type(file_path):
     try:
         # Send lydfilen til den lokale OpenAI-kompatible serveren
@@ -160,43 +201,60 @@ def toggle_recording():
     else:
         stop_recording()
 
+
+
 def win32_event_filter(msg, data):
     """
     Kjører KUN på Windows.
-    Blokkerer Windows fra å sende Ctrl + Shift + I videre til aktiv app,
-    og trigger handlingen manuelt ved hjelp av Asynchronous Key State.
+    Håndterer blokkering og utførelse av Ctrl + Shift + I og Escape-tasten.
     """
-    global listener, last_press_time
+    global listener, last_press_time, escape_was_cancelled
     try:
         if IS_WINDOWS and user32:
-            # Virtual Key Code for 'I'-tasten er 0x49 (73)
-            if data.vkCode == 0x49:
+            
+            # 1. Håndter Ctrl + Shift + I (Start/Stopp)
+            if data.vkCode == 0x49:  # 'I'
                 ctrl_down = bool(user32.GetAsyncKeyState(VK_CONTROL) & 0x8000)
                 shift_down = bool(user32.GetAsyncKeyState(VK_SHIFT) & 0x8000)
                 
                 if ctrl_down and shift_down:
-                    # 1. Trigger handlingen først (kun på tast-ned: WM_KEYDOWN = 256, WM_SYSKEYDOWN = 260)
+                    # Trigger handlingen først (kun på tast-ned)
                     if msg in (256, 260):
                         current_time = time.time()
-                        # Hindrer at Windows auto-repeat trigger funksjonen flere ganger
                         if current_time - last_press_time > 0.4:
                             last_press_time = current_time
                             print("⚡ [SNARVEI DETEKTERT] Veksler opptak...")
                             toggle_recording()
                     
-                    # 2. Blokker tasten i Windows ved å bruke suppress_event().
-                    # Dette kaster et SuppressException som pynput fanger opp for å blokkere kun denne spesifikke tasten.
+                    # Blokker tasten til slutt
+                    if listener:
+                        listener.suppress_event()
+            
+            # 2. Håndter Escape (Avbryt opptak hvis aktivt)
+            elif data.vkCode == VK_ESCAPE:
+                if is_recording or escape_was_cancelled:
+                    # Trigger avbrytelse først (kun på tast-ned)
+                    if msg in (256, 260):  # WM_KEYDOWN, WM_SYSKEYDOWN
+                        escape_was_cancelled = True
+                        cancel_recording()
+                    elif msg in (257, 261):  # WM_KEYUP, WM_SYSKEYUP
+                        escape_was_cancelled = False
+                    
+                    # Blokker tasten til slutt (kaster SuppressException)
                     if listener:
                         listener.suppress_event()
                         
     except Exception as e:
-        # Hvis feilen er pynput sitt eget blokkerings-unntak, må vi kaste det videre (raise)
-        # slik at pynput sin interne hook oppdager det og blokkerer tasten i Windows.
+        # Hvis feilen er pynput sitt eget blokkerings-unntak, må vi la det passere (raise)
         if 'SuppressException' in type(e).__name__:
             raise e
         print(f"DEBUG-FEIL i tastaturfilter: {e}", file=sys.stderr)
         
     return True
+
+
+
+
 
 def main():
     # Sett tittelen til BLÅ sirkel med en gang vi starter opp
@@ -210,6 +268,7 @@ def main():
     print("\nSnarvei registrert: [ Ctrl + Shift + I ]")
     print(" - Trykk én gang for å starte opptak.")
     print(" - Trykk igjen for å stoppe, transkribere og skrive.")
+    print(" - Trykk [ Escape ] mens opptaket kjører for å avbryte.")
     print("\n(Trykk Ctrl + C i denne terminalen for å avslutte appen)")
     print("--------------------------------------------------")
 
@@ -217,15 +276,12 @@ def main():
     
     # Start lytteren basert på operativsystem
     if IS_WINDOWS:
-        # På Windows bruker vi en vanlig Listener i stedet for GlobalHotKeys.
-        # Siden vi allerede trigger opptaket manuelt i filteret, unngår vi
-        # dermed at handlingen kalles dobbelt.
         listener = keyboard.Listener(win32_event_filter=win32_event_filter)
     else:
-        # På Mac/Linux bruker vi standard pynput-snarvei
-        listener = keyboard.GlobalHotKeys(
-            { '<ctrl>+<shift>+i': toggle_recording }
-        )
+        listener = keyboard.GlobalHotKeys({
+            '<ctrl>+<shift>+i': toggle_recording,
+            '<esc>': cancel_recording_if_active
+        })
         
     listener.start()
 
@@ -241,4 +297,4 @@ def main():
         listener.stop()
 
 if __name__ == "__main__":
-    main()()
+    main()
