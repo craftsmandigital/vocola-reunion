@@ -42,6 +42,39 @@ uv add sounddevice soundfile pynput requests pyyaml pyperclip
 
 ---
 
+## Prosjektstruktur
+
+Koden er organisert i moduler etter ansvar. Rotnivået inneholder kun en tynn startfil — all logikk ligger i pakken `speech_to_text` under `src/`:
+
+```
+speech-to-text/
+├── config.yaml                 # Innstillinger (endres uten å røre koden)
+├── main.py                     # Tynn startfil: uv run main.py
+├── pyproject.toml              # Pakkedefinisjon og avhengigheter
+├── README.md
+└── src/speech_to_text/
+    ├── __init__.py             # Re-eksporterer main()
+    ├── __main__.py             # Støtte for python -m speech_to_text
+    ├── app.py                  # Inngangspunkt: kobler alt sammen, kjører hovedløkken
+    ├── config.py               # Laster config.yaml og bygger typede konfig-objekter
+    ├── platform_info.py        # Plattformdeteksjon og lazy ctypes-bindinger
+    ├── ui.py                   # Setter tittel på terminalvinduet
+    ├── shortcuts.py            # Parser snarveier ('<ctrl>+<shift>+i') til VK-koder
+    ├── audio_recorder.py       # Lydopptak: strøm, tråd og tempfil (AudioRecorder-klassen)
+    ├── transcription.py        # Sender lydfilen til whisper-serveren
+    ├── clipboard.py            # Windows privacy-formater + pyperclip-fallback
+    ├── paste.py                # Leverer teksten til det aktive programmet
+    └── hotkeys.py              # Globale snarveier (Windows-filter / GlobalHotKeys)
+```
+
+* **`app.py`** er det eneste stedet som kobler modulene sammen og eier hovedløkken.
+* **`audio_recorder.py`** eier all opptakstilstand (aktiv/ikke aktiv, strøm, tråd, tempfil) inne i én klasse — ingen delte globale variabler.
+* **`transcription.py`** er ren I/O: sender WAV til serveren og returnerer teksten. Den vet ingenting om utklippstavle eller liming.
+* **`clipboard.py`** samler all Windows-spesifikk `ctypes`-kode på ett sted, med `pyperclip` som fallback på andre plattformer.
+* Windows-spesifikk logikk er skjult bak plattformsjekker i `platform_info.py`/`hotkeys.py`, så pakken kan importeres trygt på alle operativsystem.
+
+---
+
 ## Konfigurasjon (`config.yaml`)
 
 Alle viktige parametre — server-URL, snarveier, lydinnstillinger, terminaltitler og oppførsel — ligger i `config.yaml` i samme mappe som `main.py`. Filen støtter kommentarer, så du kan notere hvorfor du har valgt en bestemt verdi.
