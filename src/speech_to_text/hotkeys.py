@@ -80,15 +80,16 @@ class WindowsEventFilter:
             ctrl_down = bool(user32.GetAsyncKeyState(VK_CONTROL) & 0x8000)
             shift_down = bool(user32.GetAsyncKeyState(VK_SHIFT) & 0x8000)
 
-            if ctrl_down and shift_down and msg in (_MSG_KEYDOWN_WINDOWS, _MSG_SYSKEYDOWN_WINDOWS):
-                now = time.time()
-                if now - self._last_press_time > self._toggle_debounce:
-                    self._last_press_time = now
-                    print("⚡ [SNARVEI DETEKTERT] Veksler opptak...")
-                    self._toggle_recording()
+            if ctrl_down and shift_down:
+                if msg in (_MSG_KEYDOWN_WINDOWS, _MSG_SYSKEYDOWN_WINDOWS):
+                    now = time.time()
+                    if now - self._last_press_time > self._toggle_debounce:
+                        self._last_press_time = now
+                        print("⚡ [SNARVEI DETEKTERT] Veksler opptak...")
+                        self._toggle_recording()
 
-            if self._listener is not None:
-                self._listener.suppress_event()
+                if self._listener is not None:
+                    self._listener.suppress_event()
 
         elif data.vkCode == self._cancel.vk_code and self._cancel.vk_code is not None:
             if self._recorder.is_active or self._escape_was_cancelled:
