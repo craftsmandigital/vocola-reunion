@@ -10,7 +10,7 @@ tags:
 
 > [!info] **Dokumentstatus**
 > **Prosjektfase:** Prototype – Fase 2 (Kommandomodus)  
-> **Status:** Arbeidsdokument  
+> **Status:** Arbeidsdokument (amendert etter grilling 2026-08-22, se §8 Beslutningslogg)  
 > **Forutsetning:** Prototype for talemodus (norsk diktering via `Necklace/faster-nb-whisper-large`) er ferdigstilt. Denne spesifikasjonen isolerer og definerer **kommandodelen** for testing og verifisering av ytelse og nøyaktighet før systemene kobles sammen.
 
 ---
@@ -22,7 +22,7 @@ Formålet med denne prototypen er å utvikle og teste et dedikert, ultra-lavlate
 
 ### 1.2 Avgrensning (Scope)
 * **Inkludert:** 
-  * Lydopptak og strømming av engelske kommandoer fra klient til lokal GPU-server over 2.5 GbE nettverk.
+  * Lydopptak med bufferet opplasting av engelske kommandoer fra klient til lokal GPU-server over 2.5 GbE nettverk.
   * GPU-akselerert transkripsjon ved bruk av `faster-whisper` (`base.en` / `tiny.en`).
   * Parsing av tekst mot et definert subset av Vocola3-grammatikk.
   * Generering og sending av strukturerte JSON-handlingssekvenser.
@@ -42,86 +42,45 @@ Systemet benytter en klient-server-modell over lokalt 2.5 GbE nettverk. All bere
 flowchart LR
     subgraph Client ["Klient (Lokal PC)"]
         direction TB
-        MIC["1. Mikrofonfangst\n(16 kHz Mono / Push-to-Talk)"]
+        MIC["1. Mikrofonfangst\n(16 kHz Mono / Toggle-opptak,\ntrimming + RMS-gate i klienten)"]
         EXEC["5. Handlingsutførelse\n(Simulerer Tastatur/Snarveier)"]
     end
 
     subgraph Server ["Ubuntu Server (Docker / GPU)"]
         direction TB
-        COORD["2. Koordinator\n(Mottak / WebSocket :8000)"]
-        ASR_CMD["3. Faster-Whisper base.en\n(Kommandomodell :8002)"]
-        PARSER["4. Regelparser\n(Vocola3-subset til Handlingssekvens)"]
+        CMD_SVC["2–4. Kommandotjeneste\n(Faster-Whisper base.en +\nRegelparser Vocola3-subset, :8002)"]
         ASR_SPEECH["(Eksisterende Norsk Whisper)\n(Talemodus :8001)"]
     end
 
-    MIC -->|"Lydstrøm over LAN (2.5 GbE)"| COORD
-    COORD -->|"Rålyd"| ASR_CMD
-    ASR_CMD -->|"Engelsk tekst"| PARSER
-    PARSER -->|"JSON Handlingssekvens"| COORD
-    COORD -->|"JSON Respons"| EXEC
+    MIC -->|"Rå PCM ved toggle-stopp (2.5 GbE)"| CMD_SVC
+    CMD_SVC -->|"Konvolutt: JSON Handlingssekvens"| EXEC
 ```
 
 ---
 
 ## 3. Infrastruktur og Docker-konfigurasjon
 
-Tjenestene kjøres samlet i Docker Compose på Ubuntu-serveren. Oppsettet utvider din eksisterende konfigurasjon slik at både den store norske modellen og den lette engelske kommandamodellen kjører side om side på samme GPU.
+Kommandomodus kjører som **én samlet tjeneste** på serveren: ASR og parser i samme prosess (egen tynn FastAPI-wrapper rundt `faster-whisper`-biblioteket). Dette gir full kontroll over `initial_prompt`, `beam_size` og `temperature` (FK-2.2/FK-2.3) og fjerner både koordinator-leddet og OpenAI-API-overhead. Den eksisterende norske dikteringstjenesten berøres ikke.
+
+Se `server/docker-compose.yaml` i repoet:
 
 ```yaml
-version: '3.8'
-
 services:
-  # 1. KOORDINATOR & PARSER (Felles inngangsport for klienten)
-  coordinator:
-    build: ./coordinator
-    container_name: voice-coordinator
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-    environment:
-      - SPEECH_WHISPER_URL=http://whisper-speech:8000
-      - COMMAND_WHISPER_URL=http://whisper-command:8000
-    depends_on:
-      - whisper-speech
-      - whisper-command
-
-  # 2. EKSISTERENDE WHISPER - Norsk talegjenkjenning (Dikteringsmodus)
-  whisper-speech:
-    image: fedirz/faster-whisper-server:latest-cuda
-    container_name: faster-whisper-speech
-    restart: unless-stopped
-    ports:
-      - "8001:8000"
-    environment:
-      - WHISPER__MODEL=Necklace/faster-nb-whisper-large
-      - PRELOAD_MODELS=["Necklace/faster-nb-whisper-large"]
-      - WHISPER__INFERENCE_DEVICE=cuda
-      - WHISPER__TTL=-1
-      - WHISPER__COMPUTE_TYPE=int8_float16
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities:
-                - gpu
-    volumes:
-      - whisper_models:/root/.cache/huggingface
-
-  # 3. NY WHISPER - Engelsk kommandogjenkjenning (Kommandomodus)
-  whisper-command:
-    image: fedirz/faster-whisper-server:latest-cuda
-    container_name: faster-whisper-command
+  command-service:
+    build:
+      context: .
+      dockerfile: command-service/Dockerfile
+    container_name: voice-command-service
     restart: unless-stopped
     ports:
       - "8002:8000"
     environment:
-      - WHISPER__MODEL=base.en
-      - PRELOAD_MODELS=["base.en"]
-      - WHISPER__INFERENCE_DEVICE=cuda
-      - WHISPER__TTL=-1
-      - WHISPER__COMPUTE_TYPE=int8_float16
+      COMMAND_MODEL: base.en
+      WHISPER_DEVICE: cuda
+      WHISPER_COMPUTE_TYPE: int8_float16
+      GRAMMAR_PATH: /etc/command-grammar/rules.yaml
+    volumes:
+      - ./grammar:/etc/command-grammar:ro
     deploy:
       resources:
         reservations:
@@ -130,28 +89,19 @@ services:
               count: 1
               capabilities:
                 - gpu
-    volumes:
-      - whisper_models:/root/.cache/huggingface
-
-volumes:
-  whisper_models: {}
-
-networks:
-  default:
-    name: voice-network
 ```
 
 > [!tip] **GPU-ressurser**
-> Begge modellene deler samme fysiske GPU (`capabilities: [gpu]`). `base.en` krever kun ~150–290 MB VRAM, og vil derfor ikke påvirke ytelsen eller minnekapasiteten til den store norske modellen.
+> Kommandotjenesten deler samme fysiske GPU som den store norske modellen. `base.en` krever kun ~150–290 MB VRAM og vil derfor ikke påvirke ytelsen eller minnekapasiteten til den store modellen.
 
 ---
 
 ## 4. Funksjonelle Krav (FK)
 
 ### FK-1: Lydfangst og Klientoverføring
-* **FK-1.1:** Klienten skal ta opp lyd i **16 kHz, 16-bit mono WAV/PCM**.
-* **FK-1.2:** Aktivering skal skje via en **Push-to-Talk**-mekanisme (hold inne definert hurtigtast mens kommandoen sies).
-* **FK-1.3:** Lydpakken skal overføres til `coordinator` (port 8000) over lokalnettet.
+* **FK-1.1:** Klienten skal ta opp lyd i **16 kHz, 16-bit mono PCM** (bufferes i minnet, ikke tempfil).
+* **FK-1.2:** Aktivering skjer via **toggle-opptak** (samme tast starter og stopper). Før sending klipper klienten bort stillhet (**energi-trimming**), forkaster opptak under terskel/varighet (**RMS-gate**) og sender automatisk ved **opptakstak** på 8 sekunder.
+* **FK-1.3:** Det trimmede PCM-klippet overføres til kommandotjenesten (port 8002) som rå bytes i én HTTP POST ved toggle-stopp.
 
 ### FK-2: Talegjenkjenning på Server (ASR)
 * **FK-2.1:** Modellen skal kjøre på dedikert GPU via `faster-whisper` (`base.en` i `int8_float16` eller `float16`).
@@ -164,14 +114,14 @@ networks:
 * **FK-3.3:** Parseren skal oversette en gjenkjent regel til en kronologisk liste over diskrete handlinger (`keypress`, `wait`, `type_text`).
 
 ### FK-4: JSON Handlingsprotokoll
-* **FK-4.1:** Serveren skal svare klienten med en standardisert JSON-matrise (array) som beskriver rekkefølgen av handlinger som skal utføres.
+* **FK-4.1:** Serveren skal svare klienten med en standardisert **konvolutt**: `status` (`ok` | `unknown` | `error`), hørt tekst, matchet regel, handlingssekvens og timing. Klienten utfører handlingene kun ved `status: "ok"`.
 * **FK-4.2:** Protokollen skal støtte modifikasjonstaster (`ctrl`, `alt`, `shift`, `super`/`cmd`) kombinert med enkelt-taster, samt eksplisitte tidsforsinkelser (`wait` i millisekunder).
 
 ---
 
-## 5. Datamodell: JSON-handlingsprotokoll
+## 5. Datamodell: Konvolutten (JSON-handlingsprotokoll)
 
-Når en kommando er gjenkjent og parset, sender koordinatoren en strukturert liste med operasjoner tilbake til klienten.
+Når en kommando er gjenkjent og parset, returnerer kommandotjenesten en konvolutt med status, hørt tekst, matchet regel, handlingssekvens og timing.
 
 ### Spesifikasjon av handlingsobjekter:
 1. **`keypress`**: Utfører ett eller flere samtidige tastetrykk.
@@ -184,29 +134,38 @@ Når en kommando er gjenkjent og parset, sender koordinatoren en strukturert lis
    * `action`: `"type_text"`
    * `text`: Strengen som skal skrives.
 
-### Eksempel på mottatt JSON-sekvens:
+### Eksempel på mottatt konvolutt:
 ```json
-[
-  {"action": "keypress", "keys": ["enter"]},
-  {"action": "keypress", "keys": ["shift", "up"]},
-  {"action": "keypress", "keys": ["ctrl", "b"]},
-  {"action": "keypress", "keys": ["enter"]},
-  {"action": "keypress", "keys": ["ctrl", "a"]},
-  {"action": "keypress", "keys": ["ctrl", "c"]},
-  {"action": "keypress", "keys": ["alt", "tab"]},
-  {"action": "wait", "ms": 150},
-  {"action": "keypress", "keys": ["ctrl", "v"]}
-]
+{
+  "status": "ok",
+  "heard": "reformat block",
+  "rule": "reformat_block",
+  "actions": [
+    {"action": "keypress", "keys": ["enter"]},
+    {"action": "keypress", "keys": ["shift", "up"]},
+    {"action": "keypress", "keys": ["ctrl", "b"]},
+    {"action": "keypress", "keys": ["enter"]},
+    {"action": "keypress", "keys": ["ctrl", "a"]},
+    {"action": "keypress", "keys": ["ctrl", "c"]},
+    {"action": "keypress", "keys": ["alt", "tab"]},
+    {"action": "wait", "ms": 150},
+    {"action": "keypress", "keys": ["ctrl", "v"]}
+  ],
+  "timing_ms": {"total": 41.2, "asr": 38.9, "parse": 0.1}
+}
 ```
+
+Ved ukjent kommando: `{"status": "unknown", "heard": "elephant", "rule": null, "actions": [], "timing_ms": {...}}` – klienten viser tilbakemelding og trykker ingen taster.
 
 ---
 
 ## 6. Ikke-funksjonelle Krav (NFK)
 
 ### NFK-1: Ytelse og Responstid
-* **NFK-1.1 (Ende-til-ende latens):** Total tid fra brukeren slipper Push-to-Talk-knappen til første tastetrykk utføres på klient-OS skal være under **100 ms** over kablet 2.5 GbE nettverk.
-* **NFK-1.2 (GPU Inferenstid):** ASR-inferens for `base.en` på GPU skal fullføres innen **20 ms** for korte lydklipp.
+* **NFK-1.1 (Ende-til-ende latens):** Total tid fra brukeren trykker toggle for å stoppe opptak til første tastetrykk utføres på klient-OS skal være under **100 ms** over kablet 2.5 GbE nettverk.
+* **NFK-1.2 (GPU Inferenstid):** ASR-inferens for `base.en` på GPU skal fullføres innen **20 ms** for korte lydklipp. *Målverdi, ikke hardt krav – justeres etter målinger (beslutningslogg Q9).*
 * **NFK-1.3 (Parser-tid):** Grammatikkparsing skal ta **< 2 ms**.
+* **NFK-1.4 (Instrumentering):** Konvolutten skal alltid inneholde `timing_ms` per etappe; klienten logger ende-til-ende-latens (slipp → første tastetrykk) per kommando.
 
 ### NFK-2: Maskinvare og Miljø
 * **Server:** Ubuntu Linux med NVIDIA GPU (CUDA-støtte).
@@ -219,7 +178,35 @@ Når en kommando er gjenkjent og parset, sender koordinatoren en strukturert lis
 
 | ID        | Testscenario                                                        | Forventet resultat                                                                                 | Status |
 | :-------- | :------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------- | :----- |
-| **TC-01** | Si *"Copy That"* via Push-to-Talk.                                  | Mottar `[{"action": "keypress", "keys": ["ctrl", "c"]}]`. Total tid < 100 ms.                      | [ ]    |
-| **TC-02** | Si en kompleks makro (sekvens med navigering, markering og liming). | Klienten mottar JSON-sekvensen og utfører alle stegene i korrekt rekkefølge med overholdte pauser. | [ ]    |
-| **TC-03** | Si et ord som ikke finnes i grammatikken (f.eks. *"Elephant"*).     | Parser returnerer `UNKNOWN_COMMAND` eller tomt handlingssett uten å krasje serveren.               | [ ]    |
-| **TC-04** | Bakgrunnsstøy/stille opptak ved Push-to-Talk.                       | Ingen feilaktige tastetrykk trigges lokalt på klienten.                                            | [ ]    |
+| **TC-01** | Si *"Copy That"* via toggle.                                        | Mottar konvolutt med `[{"action": "keypress", "keys": ["ctrl", "c"]}]`. Total tid < 100 ms.         | [ ]    |
+| **TC-02** | Si en kompleks makro (sekvens med navigering, markering og liming). | Klienten mottar handlingssekvensen og utfører alle stegene i korrekt rekkefølge med overholdte pauser. | [ ]    |
+| **TC-03** | Si et ord som ikke finnes i grammatikken (f.eks. *"Elephant"*).     | Konvolutt med `status: "unknown"`; ingen taster trykkes, serveren krasjer ikke.                     | [ ]    |
+| **TC-04** | Bakgrunnsstøy/stille opptak via toggle.                             | Ingen feilaktige tastetrykk trigges lokalt på klienten (RMS-gate/trimming forkaster sending).       | [ ]    |
+
+---
+
+## 8. Beslutningslogg (grilling 2026-08-22)
+
+Arkitektur- og kravavgjørelser fattet under grillingen; disse amender originalspesifikasjonen:
+
+| # | Avgjørelse | Begrunnelse |
+|---|------------|-------------|
+| Q1 | Egen tynn FastAPI-wrapper rundt faster-whisper i stedet for ferdigimage (`fedirz/faster-whisper-server` er arkivert) | Full kontroll over `initial_prompt`/`beam_size`/`temperature`; ingen OpenAI-API-overhead |
+| Q2 | Bufferet opplasting ved toggle-stopp (rå PCM, én HTTP POST); ikke ekte strømming | faster-whisper er batch-basert; strømming = senere optimering kun hvis målingene tilsier det |
+| Q3 | Samme repo som dikteringsklienten, egen modul/entrypoint (`command_client.py`) | Isolert nok til å teste alene, deler infrastruktur uten duplisering |
+| Q4 | Regler i YAML (Vocola3-subset-semantikk), ikke ekte `.vcl`-filer | Deterministisk, trivielt å generere `initial_prompt` fra; `.vcl` kan komme senere |
+| Q5 | **Toggle + energi-trimming + RMS-gate + opptakstak**, ikke Push-to-Talk | Gjenbruker fase 1-infrastruktur; trimming gir nesten like stramme klipp; FK-1.2 amendert |
+| Q6 | Ukjent kommando → visuell tilbakemelding (overlay), aldri tastetrykk; ingen auto-retry | TC-03; deterministisk oppførsel |
+| Q7 | Støyhåndtering som klientgate (RMS + minimumslengde); ingen VAD i fase 2 | Billigst og raskest |
+| Q8 | Monorepo: serverkode under `server/` | Kravspek, klient og server samlet |
+| Q9 | NFK-1.2 (<20 ms ASR) behandles som målverdi; ende-til-ende-instrumentering fra dag én | Realistisk latensavklaring gjennom måling, ikke design rundt udokumentert tall |
+| Q10 | `type_text` støttes i protokoll og klient, men ingen regler bruker den ennå | Billig å ha med fra starten |
+| Q11 | Koordinator slås sammen med parser + ASR til **én kommandotjeneste** (:8002) | Fjerner et nettverkshopp og en container i fase 2; koordinator gjenoppstår i fase 3 ved modus-ruting |
+| Q12 | Streng matching etter normalisering; fuzzy matching utsettes | Grammatikken definerer vokabularet; match/miss er binært. Feilhør tas først med målinger |
+| Q13 | Svar som konvolutt (`status`/`heard`/`rule`/`actions`/`timing_ms`), ikke naken array | TC-03 krever grunnlag for tilbakemelding; timing trengs til NFK-verifisering |
+| Q14 | Startregelsett på ~7 regler + én kompleks makro | Stort nok til å teste valggrupper, lite nok til manuell verifisering |
+| Q15 | Opptakstak overskrides → klippet sendes automatisk | Verste fall `unknown`; ingen kommando mister uventet |
+
+**Etterskudd 2026-08-22 (feltdata):** Første taledel-gate (`min_speech_ratio`, andel høylydte vinduer av hele klippet) forkastet ekte tale: toggle-opptak inneholder betenkningsstillhet som fortynner andelen uansett taleinnhold (målt: avvist 2132 ms-klipp hadde ~310 ms tale – mer enn det godkjente). Erstattet med **`min_loud_ms`** – absolutt ms taleenergi, lengde-uavhengig. Samme målerunde bekreftet E2E-latens **93,2 ms < 100 ms-målet (NFK-1.1 ✓)** etter sentinel-fiks i opptakeren.
+
+Se `CONTEXT.md` for den avklarte terminologien (toggle-opptak, energi-trimming, RMS-gate, konvolutt osv.).

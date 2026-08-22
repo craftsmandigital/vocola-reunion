@@ -1,0 +1,87 @@
+# Grammatikk for kommandomodus (Vocola3-subset).
+#
+# Hver regel har:
+#   name    – identifikator som returneres i konvolutten
+#   say     – talt frase; parentes = valggruppe, f.eks. "focus (chrome | terminal)"
+#   actions – handlingssekvens (keypress | wait | type_text)
+#   branches– valgfri: egne handlinger per valg i en valggruppe
+#
+# Matchingen er streng: normalisert ASR-tekst må være identisk med en frase.
+
+rules:
+  - name: copy_that
+    say: "copy that"
+    actions:
+      - action: keypress
+        keys: [ctrl, c]
+
+  - name: cut_that
+    say: "cut that"
+    actions:
+      - action: keypress
+        keys: [ctrl, x]
+
+  - name: paste_that
+    say: "paste that"
+    actions:
+      - action: keypress
+        keys: [ctrl, v]
+
+  - name: undo_that
+    say: "undo that"
+    actions:
+      - action: keypress
+        keys: [ctrl, z]
+
+  - name: save
+    say: "save"
+    actions:
+      - action: keypress
+        keys: [ctrl, s]
+
+  - name: switch_window
+    say: "switch window"
+    actions:
+      - action: keypress
+        keys: [alt, tab]
+
+  # FK-3.2: valggruppe der hvert valg har sin egen handlingssekvens.
+  - name: focus_app
+    say: "focus (chrome | terminal)"
+    branches:
+      chrome:
+        - action: keypress
+          keys: [super, "1"]
+      terminal:
+        - action: keypress
+          keys: [super, "2"]
+
+  # FK-3.2: valggruppe med felles handlingssekvens.
+  - name: show_desktop
+    say: "(show | hide) desktop"
+    actions:
+      - action: keypress
+        keys: [super, d]
+
+  # TC-02: kompleks makro – navigering, markering og liming med pause.
+  - name: reformat_block
+    say: "reformat block"
+    actions:
+      - action: keypress
+        keys: [enter]
+      - action: keypress
+        keys: [shift, up]
+      - action: keypress
+        keys: [ctrl, b]
+      - action: keypress
+        keys: [enter]
+      - action: keypress
+        keys: [ctrl, a]
+      - action: keypress
+        keys: [ctrl, c]
+      - action: keypress
+        keys: [alt, tab]
+      - action: wait
+        ms: 150
+      - action: keypress
+        keys: [ctrl, v]

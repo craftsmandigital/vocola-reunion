@@ -51,8 +51,20 @@ DEFAULT_CONFIG: dict[str, dict[str, object]] = {
         "overlay_done": "✅  Pasted!",
         "overlay_cancelled": "❌  Cancelled",
         "overlay_error": "⚠️  Error",
+        "command_overlay_done": "✅  Kommando utført!",
         "overlay_opacity": 0.88,
         "overlay_auto_hide_seconds": 2.0,
+    },
+    "command": {
+        "url": "http://192.168.1.200:8002/command",
+        "toggle": "<ctrl>+<shift>+k",
+        "cancel": "<esc>",
+        "timeout_seconds": 3.0,
+        "min_duration_ms": 200,
+        "max_duration_ms": 8000,
+        "rms_threshold_dbfs": -45.0,
+        "silence_pad_ms": 60,
+        "min_loud_ms": 60,
     },
     "logging": {
         "console_level": "INFO",
@@ -113,8 +125,24 @@ class UiConfig:
     overlay_done: str = "✅  Pasted!"
     overlay_cancelled: str = "❌  Cancelled"
     overlay_error: str = "⚠️  Error"
+    command_overlay_done: str = "✅  Kommando utført!"
     overlay_opacity: float = 0.88
     overlay_auto_hide_seconds: float = 2.0
+
+
+@dataclass(frozen=True)
+class CommandConfig:
+    """Command-mode settings: server URL, hotkeys and audio gates."""
+
+    url: str
+    toggle: str
+    cancel: str
+    timeout_seconds: float
+    min_duration_ms: int
+    max_duration_ms: int
+    rms_threshold_dbfs: float
+    silence_pad_ms: int
+    min_loud_ms: int
 
 
 @dataclass(frozen=True)
@@ -134,6 +162,7 @@ class AppConfig:
     shortcuts: ShortcutConfig
     audio: AudioConfig
     paste: PasteConfig
+    command: CommandConfig
     ui: UiConfig
     logging: LoggingConfig
 
@@ -184,6 +213,7 @@ def _build_app_config(merged: dict[str, dict[str, object]]) -> AppConfig:
     shortcuts = merged["shortcuts"]
     audio = merged["audio"]
     paste = merged["paste"]
+    command = merged["command"]
     ui = merged["ui"]
     logging_cfg = merged.get("logging", {})
 
@@ -220,8 +250,20 @@ def _build_app_config(merged: dict[str, dict[str, object]]) -> AppConfig:
             overlay_done=str(ui.get("overlay_done", "✅  Pasted!")),
             overlay_cancelled=str(ui.get("overlay_cancelled", "❌  Cancelled")),
             overlay_error=str(ui.get("overlay_error", "⚠️  Error")),
+            command_overlay_done=str(ui.get("command_overlay_done", "✅  Kommando utført!")),
             overlay_opacity=float(ui.get("overlay_opacity", 0.88)),
             overlay_auto_hide_seconds=float(ui.get("overlay_auto_hide_seconds", 2.0)),
+        ),
+        command=CommandConfig(
+            url=str(command["url"]),
+            toggle=str(command["toggle"]),
+            cancel=str(command["cancel"]),
+            timeout_seconds=float(command["timeout_seconds"]),
+            min_duration_ms=int(command["min_duration_ms"]),
+            max_duration_ms=int(command["max_duration_ms"]),
+            rms_threshold_dbfs=float(command["rms_threshold_dbfs"]),
+            silence_pad_ms=int(command["silence_pad_ms"]),
+            min_loud_ms=int(command["min_loud_ms"]),
         ),
         logging=LoggingConfig(
             console_level=str(logging_cfg.get("console_level", "INFO")),

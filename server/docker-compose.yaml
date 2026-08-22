@@ -1,0 +1,27 @@
+services:
+  # Kommandotjenesten: rå PCM inn -> konvolutt med handlingssekvens ut.
+  # Dikteringstjenesten (norsk, port 8001) styres fortsatt av sin eksisterende
+  # oppsett og berøres ikke her.
+  command-service:
+    build:
+      context: .
+      dockerfile: command-service/Dockerfile
+    container_name: voice-command-service
+    restart: unless-stopped
+    ports:
+      - "8002:8000"
+    environment:
+      COMMAND_MODEL: base.en
+      WHISPER_DEVICE: cuda
+      WHISPER_COMPUTE_TYPE: int8_float16
+      GRAMMAR_PATH: /etc/command-grammar/rules.yaml
+    volumes:
+      - ./grammar:/etc/command-grammar:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities:
+                - gpu

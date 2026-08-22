@@ -174,8 +174,9 @@ class StatusOverlay:
 
     def show_done(self, text: str = "") -> None:
         def _do() -> None:
+            display = f"{self._cfg.overlay_done} {text[:30]}" if text else self._cfg.overlay_done
             self._cancel_pending_hide()
-            self._set(self._cfg.overlay_done, _BG_DONE)
+            self._set(display, _BG_DONE)
             self._show()
             self._schedule_hide(self._cfg.overlay_auto_hide_seconds)
         self._q.put(_do)

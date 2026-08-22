@@ -26,6 +26,25 @@ audio:
   # Mono (1) er tilstrekkelig for tale.
   channels: 1
 
+command:
+  # URL til kommandotjenesten (rå PCM inn, konvolutt ut).
+  url: "http://192.168.1.200:8002/command"
+  # Toggle-snarvei for kommandomodus (må være annerledes enn diktering).
+  toggle: "<ctrl>+<shift>+u"
+  cancel: "<esc>"
+  timeout_seconds: 3.0
+  # RMS-gate: kast oppetak kortere enn dette, eller uten lyd over terskelen.
+  min_duration_ms: 200
+  rms_threshold_dbfs: -45.0
+  # Tale-gate: krever minst så mange millisekunder faktisk taleenergi
+  # (10 ms-vinduer over rms_threshold_dbfs), uansett hvor mye stillhet som
+  # omgir talen i opptaket. Sile bort enkelt-lydspikere og stille toggles.
+  min_loud_ms: 60
+  # Opptakstak: ved overskridelse sendes klippet automatisk.
+  max_duration_ms: 8000
+  # Stillhet i kantene klippes bort; behold denne marginen rundt talen.
+  silence_pad_ms: 60
+
 paste:
   # Hvordan teksten skal leveres til det aktive programmet.
   # Valg:

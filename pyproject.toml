@@ -18,6 +18,12 @@ dependencies = [
 
 [project.scripts]
 speech-to-text = "speech_to_text:main"
+speech-commands = "speech_to_text.command_client:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+]
 
 [build-system]
 requires = ["uv_build>=0.12.1,<0.13.0"]
