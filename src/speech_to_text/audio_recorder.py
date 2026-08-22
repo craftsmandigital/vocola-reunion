@@ -12,12 +12,16 @@ transcribing and pasting.
 
 from __future__ import annotations
 
+import logging
 import queue
 import sys
 import tempfile
 import threading
 from collections.abc import Callable
 from pathlib import Path
+
+
+logger = logging.getLogger(__name__)
 
 import sounddevice as sd
 import soundfile as sf
@@ -65,7 +69,7 @@ class AudioRecorder:
     def _put_audio(self, indata, frames, time_info, status) -> None:
         """sounddevice callback: enqueue each block for the writer thread."""
         if status:
-            print(status, file=sys.stderr)
+            logger.debug("Audio callback status: %s", status)
         self._audio_queue.put(indata.copy())
 
     def _write_to_file(self) -> None:
@@ -113,8 +117,6 @@ class AudioRecorder:
         self._temp_file_path = temp_file.name
         temp_file.close()
 
-        print("\n🎤 [OPPTAK STARTET] Snakk nå...")
-
         self._stream = sd.InputStream(
             samplerate=self._audio_cfg.sample_rate,
             channels=self._audio_cfg.channels,
@@ -146,8 +148,6 @@ class AudioRecorder:
             self._writer_thread.join()
             self._writer_thread = None
 
-        print("🛑 [OPPTAK STOPPET] Sender til lokal server for transkribering...")
-
         path = self._temp_file_path
         callback = self._on_complete
         self._temp_file_path = None
@@ -176,14 +176,12 @@ class AudioRecorder:
             self._writer_thread.join()
             self._writer_thread = None
 
-        print("❌ [OPPTAK AVBRUTT] Opptaket ble kansellert.")
-
         path = self._temp_file_path
         self._temp_file_path = None
         if path is not None and Path(path).exists():
             try:
                 Path(path).unlink()
             except Exception as e:
-                print(f"Klarte ikke å slette avbrutt opptak: {e}")
+                logger.warning("Klarte ikke å slette avbrutt opptak: %s", e)
 
         set_terminal_title(f"{self._ui_cfg.title_ready} {self._ui_cfg.title_prefix}")

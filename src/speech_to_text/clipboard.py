@@ -12,12 +12,16 @@ On non-Windows platforms the helpers fall back to :mod:`pyperclip`.
 from __future__ import annotations
 
 import ctypes
+import logging
 import struct
 import time
 
 import pyperclip
 
 from .platform_info import IS_WINDOWS, get_kernel32, get_user32
+
+
+logger = logging.getLogger(__name__)
 
 
 # Clipboard format constants used by the Windows helpers.
@@ -204,18 +208,19 @@ def set_clipboard_text(text: str, private: bool = True) -> None:
     """
     global _privacy_ok_reported
 
+    logger.debug("set_clipboard_text: text_len=%d, private=%s, IS_WINDOWS=%s", len(text), private, IS_WINDOWS)
     if IS_WINDOWS and private:
         try:
             _set_clipboard_private_windows(text)
             missing = _verify_privacy_formats_windows()
             if missing:
-                print(f"⚠️ Privacy-formater MANGLER: {', '.join(missing)}")
+                logger.warning("Privacy-formater MANGLER: %s", ', '.join(missing))
             elif not _privacy_ok_reported:
                 _privacy_ok_reported = True
-                print("✔ Privacy-formater bekreftet (4/4) — teksten skjules for Win+V.")
+                logger.info("✔ Privacy-formater bekreftet (4/4) — teksten skjules for Win+V.")
             return
         except Exception as e:
-            print(f"⚠️ Kunne ikke sette privat utklippstavle, bruker vanlig kopi: {e}")
+            logger.warning("Kunne ikke sette privat utklippstavle, bruker vanlig kopi: %s", e)
 
     pyperclip.copy(text)
 
@@ -226,7 +231,7 @@ def get_clipboard_text() -> str | None:
         try:
             return _get_clipboard_text_windows()
         except Exception as e:
-            print(f"⚠️ Kunne ikke lese utklippstavlen: {e}")
+            logger.warning("Kunne ikke lese utklippstavlen: %s", e)
             return None
     try:
         return pyperclip.paste()
@@ -244,13 +249,13 @@ def restore_clipboard(snapshot: str | None) -> None:
     if IS_WINDOWS:
         if snapshot is None:
             if not _empty_clipboard_windows():
-                print("⚠️ Kunne ikke tømme utklippstavlen (opptatt etter 3 s?).")
+                logger.warning("Kunne ikke tømme utklippstavlen (opptatt etter 3 s?).")
             return
         try:
             _set_clipboard_private_windows(snapshot)
             return
         except Exception as e:
-            print(f"⚠️ Kunne ikke gjenopprette utklippstavlen: {e}")
+            logger.warning("Kunne ikke gjenopprette utklippstavlen: %s", e)
             return
 
     if snapshot is not None:

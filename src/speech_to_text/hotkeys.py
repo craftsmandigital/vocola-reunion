@@ -12,16 +12,19 @@ which is enough because the OS routes the shortcut to us directly.
 
 from __future__ import annotations
 
+import logging
 import sys
-import time
+import threading
 from collections.abc import Callable
 
 from pynput import keyboard
 
 from .audio_recorder import AudioRecorder
-from .config import BehaviorConfig
 from .platform_info import IS_WINDOWS, VK_CONTROL, VK_SHIFT, get_user32
 from .shortcuts import Shortcut
+
+
+logger = logging.getLogger(__name__)
 
 
 # pynput's win32_event_filter expects this return value (and these specific
@@ -45,16 +48,15 @@ class WindowsEventFilter:
         recorder: AudioRecorder,
         toggle: Shortcut,
         cancel: Shortcut,
-        behavior: BehaviorConfig,
     ) -> None:
         self._recorder = recorder
         self._toggle = toggle
         self._cancel = cancel
-        self._toggle_debounce = behavior.toggle_debounce_seconds
         self._listener: keyboard.Listener | None = None
 
-        self._last_press_time: float = 0.0
         self._escape_was_cancelled: bool = False
+        self._suppress_lock = threading.Lock()
+        self._toggle_triggered: bool = False
 
     def bind(self, listener: keyboard.Listener) -> None:
         """Attach the listener so we can suppress events from inside the filter."""
@@ -67,7 +69,7 @@ class WindowsEventFilter:
         except Exception as e:
             if "SuppressException" in type(e).__name__:
                 raise
-            print(f"DEBUG-FEIL i tastaturfilter: {e}", file=sys.stderr)
+            logger.error("DEBUG-FEIL i tastaturfilter: %s", e)
         return True
 
     def _handle(self, msg: int, data) -> None:
@@ -82,14 +84,17 @@ class WindowsEventFilter:
 
             if ctrl_down and shift_down:
                 if msg in (_MSG_KEYDOWN_WINDOWS, _MSG_SYSKEYDOWN_WINDOWS):
-                    now = time.time()
-                    if now - self._last_press_time > self._toggle_debounce:
-                        self._last_press_time = now
-                        print("⚡ [SNARVEI DETEKTERT] Veksler opptak...")
+                    if not self._toggle_triggered:
+                        self._toggle_triggered = True
+                        logger.info("⚡ [SNARVEI DETEKTERT] Veksler opptak...")
                         self._toggle_recording()
+                        # Suppress only this keystroke to prevent DevTools popup
+                        if self._listener is not None:
+                            self._listener.suppress_event()
 
-                if self._listener is not None:
-                    self._listener.suppress_event()
+            # Always reset on toggle key release, regardless of modifier state
+            if msg in (_MSG_KEYUP_WINDOWS, _MSG_SYSKEYUP_WINDOWS):
+                self._toggle_triggered = False
 
         elif data.vkCode == self._cancel.vk_code and self._cancel.vk_code is not None:
             if self._recorder.is_active or self._escape_was_cancelled:
@@ -113,7 +118,6 @@ def build_listener(
     recorder: AudioRecorder,
     toggle: Shortcut,
     cancel: Shortcut,
-    behavior: BehaviorConfig,
     on_complete: Callable[[str], None],
 ) -> keyboard.Listener | keyboard.GlobalHotKeys:
     """Construct the right pynput listener for the current platform.
@@ -127,7 +131,7 @@ def build_listener(
     recorder.set_completion_callback(on_complete)
 
     if IS_WINDOWS:
-        filter_ = WindowsEventFilter(recorder, toggle, cancel, behavior)
+        filter_ = WindowsEventFilter(recorder, toggle, cancel)
         listener = keyboard.Listener(win32_event_filter=filter_)
         filter_.bind(listener)
         return listener

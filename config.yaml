@@ -26,12 +26,6 @@ audio:
   # Mono (1) er tilstrekkelig for tale.
   channels: 1
 
-behavior:
-  # Minimum tid mellom to triggere av toggle (unngår repeterte tastetrykk).
-  toggle_debounce_seconds: 0.4
-  # Hvor ofte hovedløkken sjekker avslutning (Ctrl+C).
-  main_loop_sleep_seconds: 0.5
-
 paste:
   # Hvordan teksten skal leveres til det aktive programmet.
   # Valg:
@@ -51,6 +45,8 @@ paste:
   restore_clipboard: true
   # Ventetid (sek) etter liming før utklippstavlen gjenopprettes.
   restore_delay: 0.15
+  # Hvis clipboard-basert liming feiler, fall tilbake til direkte tastatur-skriving.
+  fallback_to_direct: true
 
 ui:
   # Vises i terminalvinduet. Emojis kan byttes fritt.
@@ -58,3 +54,21 @@ ui:
   title_ready: "🔵 [Ready]"
   title_recording: "🔴 [Recording...]"
   title_processing: "⏳ [Processing...]"
+  # Overlay-tekster (tkinter overlay i hjørnet av skjermen).
+  overlay_recording: "🎤  Recording..."
+  overlay_processing: "⏳  Processing..."
+  overlay_done: "✅  Pasted!"
+  overlay_cancelled: "❌  Cancelled"
+  overlay_error: "⚠️  Error"
+  # Overlay-innstillinger (tkinter).
+  overlay_opacity: 0.88
+  overlay_auto_hide_seconds: 2.0
+
+logging:
+  # Loggnivå i terminal (console). Valg: DEBUG, INFO, WARNING, ERROR
+  # INFO viser status og transkripsjon. DEBUG viser alt (inkl. tekniske detaljer).
+  console_level: "INFO"
+  # Loggnivå i loggfil. Valg: DEBUG, INFO, WARNING, ERROR
+  file_level: "DEBUG"
+  # Loggfilnavn (relativt til prosjektrot).
+  file_name: "speech-to-text.log"
