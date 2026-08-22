@@ -1,6 +1,6 @@
 [project]
 name = "speech-to-text"
-version = "0.2.1"
+version = "0.3.0"
 description = "Global-hotkey dictation client backed by a local faster-whisper server."
 readme = "README.md"
 authors = [
