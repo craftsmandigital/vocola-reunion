@@ -87,12 +87,12 @@ rules:
         keys: [ctrl, v]
 
   # TC-03: repeter siste kommando. Klienten håndterer dette spesielt –
-  # serveren returnerer tomme actions, klienten bruker lagret handling.
+  # serveren returnerer en tom handling, klienten bruker lagret handling.
   - name: repeat_that
     say: "repeat that"
     actions:
-      - action: keypress
-        keys: []
+      - action: wait
+        ms: 0
 
 
 # Egendefinerte kommandoer for testing og morro

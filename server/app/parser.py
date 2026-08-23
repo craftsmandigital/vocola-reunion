@@ -166,8 +166,8 @@ def _validate_actions(rule_name: str, phrase: str, actions: list[dict[str, Any]]
                 )
         elif kind == "wait":
             ms = action.get("ms")
-            if not isinstance(ms, int) or ms <= 0:
-                raise ValueError(f"Rule {rule_name!r} ({phrase!r}): wait needs positive integer 'ms'")
+            if not isinstance(ms, int) or ms < 0:
+                raise ValueError(f"Rule {rule_name!r} ({phrase!r}): wait needs non-negative integer 'ms'")
         elif kind == "type_text":
             if not isinstance(action.get("text"), str) or not action["text"]:
                 raise ValueError(f"Rule {rule_name!r} ({phrase!r}): type_text needs non-empty 'text'")
