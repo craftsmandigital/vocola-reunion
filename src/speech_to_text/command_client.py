@@ -11,6 +11,7 @@ import logging
 import queue
 import threading
 import time
+from collections import Counter
 from dataclasses import replace
 
 import requests
@@ -36,6 +37,10 @@ _session = requests.Session()
 
 # Ønsket: gjenbruk pynput-controller (init kan kreve noen ms ved hver instansiering).
 _controller = keyboard.Controller()
+
+# Ønsket: tell hvor ofte hver ukjent kommando blir hørt, for å identifisere
+# mangler i grammatikken.
+_unknown_counts: Counter[str] = Counter()
 
 
 # pynput-navn som avviker fra nøkkelnavnene i grammatikken.
@@ -119,6 +124,15 @@ def execute_actions(actions: list[dict], anchor: float) -> float | None:
     return first_keypress_ms
 
 
+def show_unknown_summary() -> None:
+    """Vis de 10 mest mislykte kommandoene ved oppstart."""
+    if _unknown_counts:
+        print("\nDe 10 mest mislykte kommandoene:")
+        for phrase, count in _unknown_counts.most_common(10):
+            print(f"  {count}x: {phrase}")
+        print()
+
+
 def main() -> None:
     """Load config, register toggle/cancel, run until Ctrl+C."""
     cfg = load_config()
@@ -139,6 +153,7 @@ def main() -> None:
     print("--------------------------------------------------")
 
     setup_logging(cfg)
+    show_unknown_summary()
 
     ui_queue: queue.Queue[callable] = queue.Queue()
     ui_cfg = replace(cfg.ui, overlay_done=cfg.ui.command_overlay_done)
@@ -233,6 +248,10 @@ def _worker(recorder: _FocusRecorder, clip: Clip, cmd, overlay: StatusOverlay) -
             overlay.show_error(f"Serverfeil: {detail[:30]}" if detail else "Serverfeil")
         return
     if status != "ok":
+        normalized = heard.strip().rstrip('.').lower()
+        _unknown_counts[normalized] += 1
+        count = _unknown_counts[normalized]
+        logger.info("Ukjent kommando #%d: %r", count, heard)
         label = heard[:30] if heard else "ingen tale"
         overlay.show_error(f"Ukjent kommando: {label}")
         return
