@@ -28,7 +28,7 @@ rules:
         keys: [ctrl, v]
 
   - name: undo_that
-    say: "undo that"
+    say: "(undo | and do) that"
     actions:
       - action: keypress
         keys: [ctrl, z]
@@ -46,13 +46,13 @@ rules:
         keys: [alt, tab]
 
   # FK-3.2: valggruppe der hvert valg har sin egen handlingssekvens.
-  - name: focus_app
-    say: "focus (chrome | terminal)"
+  - name: switch_app
+    say: "switch (browse | purple)"
     branches:
-      chrome:
+      browse:
         - action: keypress
           keys: [super, "1"]
-      terminal:
+      purple:
         - action: keypress
           keys: [super, "2"]
 
@@ -85,3 +85,18 @@ rules:
         ms: 150
       - action: keypress
         keys: [ctrl, v]
+
+
+# Egendefinerte kommandoer for testing og morro
+  - name: select_object
+    say: "select (line | all)"
+    branches:
+      line:
+        - action: keypress
+          keys: [home]
+        - action: keypress
+          keys: [shift, end]
+      all:
+        - action: keypress
+          keys: [ctrl, a]
+
