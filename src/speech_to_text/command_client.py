@@ -40,6 +40,9 @@ _session = requests.Session()
 # Ønsket: gjenbruk pynput-controller (init kan kreve noen ms ved hver instansiering).
 _controller = keyboard.Controller()
 
+# Ønsket: lagre siste handling for "repeat that"-støtte.
+_last_actions: list[dict] | None = None
+
 # Ønsket: tell hvor ofte hver ukjent kommando blir hørt, for å identifisere
 # mangler i grammatikken.
 _unknown_counts: Counter[str] = Counter()
@@ -227,6 +230,7 @@ def main() -> None:
 
 def _worker(recorder: _FocusRecorder, clip: Clip, cmd, overlay: StatusOverlay) -> None:  # noqa: ANN001
     """Gate, send, parse and execute – runs off the UI thread."""
+    global _last_actions
     try:
         if not clip.pcm:
             overlay.show_error("Ingen tale gjenkjent")
@@ -284,6 +288,23 @@ def _worker(recorder: _FocusRecorder, clip: Clip, cmd, overlay: StatusOverlay) -
         overlay.show_error(f"Ukjent kommando: {label}")
         return
 
+    rule_name = envelope.get("rule")
+
+    # Spesiell håndtering for "repeat that" – bruk lagret handling
+    if rule_name == "repeat_that":
+        if _last_actions:
+            logger.info("Repeterer forrige kommando (%d handlinger)", len(_last_actions))
+            first_keypress_ms = execute_actions(_last_actions, anchor=clip.stopped_at)
+            if first_keypress_ms is not None:
+                logger.info(
+                    "Ende-til-ende latens (slipp → første tastetrykk): %.1f ms",
+                    first_keypress_ms,
+                )
+            overlay.show_done("repeat that")
+        else:
+            overlay.show_error("Ingen kommando å repetere")
+        return
+
     if focus_thread is not None:
         focus_thread.join(timeout=0.1)  # sikker: fokus er nesten alltid ferdig nå
 
@@ -294,7 +315,10 @@ def _worker(recorder: _FocusRecorder, clip: Clip, cmd, overlay: StatusOverlay) -
             "(server: %s)",
             first_keypress_ms, envelope.get("timing_ms"),
         )
-    overlay.show_done(str(envelope.get("rule") or ""))
+    overlay.show_done(str(rule_name or ""))
+
+    # Lagre handlingen for "repeat that"-støtte
+    _last_actions = envelope.get("actions", [])
 
 
 if __name__ == "__main__":
