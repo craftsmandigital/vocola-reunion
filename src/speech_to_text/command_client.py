@@ -31,6 +31,12 @@ from .ui import (
 
 logger = logging.getLogger(__name__)
 
+# Ønsket: connection reuse over TCP (sparer ~1-3 ms per request på LAN).
+_session = requests.Session()
+
+# Ønsket: gjenbruk pynput-controller (init kan kreve noen ms ved hver instansiering).
+_controller = keyboard.Controller()
+
 
 # pynput-navn som avviker fra nøkkelnavnene i grammatikken.
 _KEY_ALIASES: dict[str, str] = {
@@ -88,7 +94,6 @@ def _resolve_key(name: str) -> keyboard.Key | keyboard.KeyCode | None:
 
 def execute_actions(actions: list[dict], anchor: float) -> float | None:
     """Run an action sequence; return ms from ``anchor`` to first keypress."""
-    controller = keyboard.Controller()
     first_keypress_ms: float | None = None
 
     for operation in actions:
@@ -99,15 +104,15 @@ def execute_actions(actions: list[dict], anchor: float) -> float | None:
             if not keys:
                 continue
             for key in keys:
-                controller.press(key)
+                _controller.press(key)
             for key in reversed(keys):
-                controller.release(key)
+                _controller.release(key)
             if first_keypress_ms is None:
                 first_keypress_ms = round((time.perf_counter() - anchor) * 1000, 1)
         elif kind == "wait":
             time.sleep(operation.get("ms", 0) / 1000)
         elif kind == "type_text":
-            controller.type(operation.get("text", ""))
+            _controller.type(operation.get("text", ""))
         else:
             logger.warning("Ukjent handlingstype: %r", kind)
 
@@ -192,7 +197,16 @@ def _worker(recorder: _FocusRecorder, clip: Clip, cmd, overlay: StatusOverlay) -
             "Sender %d ms klipp (RMS %.1f dBFS, tale %d ms) ...",
             clip.duration_ms, clip.rms_dbfs, clip.loud_ms,
         )
-        response = requests.post(
+        # Start fokusgjenoppretning i bakgrunnen mens serveren prosesserer
+        # (30-40 ms). Slik er fokus klart før handlinger skal sendes.
+        focus_thread: threading.Thread | None = None
+        if recorder.target_hwnd:
+            focus_thread = threading.Thread(
+                target=set_foreground_window, args=(recorder.target_hwnd,),
+                daemon=True,
+            )
+            focus_thread.start()
+        response = _session.post(
             cmd.url,
             data=clip.pcm,
             headers={"Content-Type": "application/octet-stream"},
@@ -223,8 +237,8 @@ def _worker(recorder: _FocusRecorder, clip: Clip, cmd, overlay: StatusOverlay) -
         overlay.show_error(f"Ukjent kommando: {label}")
         return
 
-    if recorder.target_hwnd:
-        set_foreground_window(recorder.target_hwnd)
+    if focus_thread is not None:
+        focus_thread.join(timeout=0.1)  # sikker: fokus er nesten alltid ferdig nå
 
     first_keypress_ms = execute_actions(envelope.get("actions", []), anchor=clip.stopped_at)
     if first_keypress_ms is not None:

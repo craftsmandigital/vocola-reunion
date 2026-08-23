@@ -33,8 +33,10 @@ COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "int8_float16")
 GRAMMAR_PATH = os.environ.get("GRAMMAR_PATH", "/etc/command-grammar/rules.yaml")
 
 # Deterministisk dekoding per krav FK-2.3.
+# beam_size=5 (ikke 1) slik at initial_prompt-biasen faktisk påvirker
+# beam-search – greedy decoding ignorerer prompten i praksis.
 TRANSCRIBE_OPTIONS = {
-    "beam_size": 1,
+    "beam_size": 5,
     "temperature": 0.0,
     "language": "en",
     "condition_on_previous_text": False,
