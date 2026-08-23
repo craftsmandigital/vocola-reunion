@@ -7,12 +7,14 @@ handlingssekvensen fra konvolutten på klient-OS.
 
 from __future__ import annotations
 
+import json
 import logging
 import queue
 import threading
 import time
 from collections import Counter
 from dataclasses import replace
+from pathlib import Path
 
 import requests
 from pynput import keyboard
@@ -41,6 +43,30 @@ _controller = keyboard.Controller()
 # Ønsket: tell hvor ofte hver ukjent kommando blir hørt, for å identifisere
 # mangler i grammatikken.
 _unknown_counts: Counter[str] = Counter()
+
+# Ønsket: persistent lagring av ukjente kommandoer mellom økninger.
+_UNKNOWN_FILE = Path("unknown_commands.json")
+
+
+def _load_unknown_counts() -> None:
+    """Last tellinger fra fil ved oppstart."""
+    if _UNKNOWN_FILE.exists():
+        try:
+            data = json.loads(_UNKNOWN_FILE.read_text(encoding="utf-8"))
+            _unknown_counts.update(data)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+
+def _save_unknown_counts() -> None:
+    """Lagre tellinger til fil ved hver ny ukjent kommando."""
+    try:
+        _UNKNOWN_FILE.write_text(
+            json.dumps(dict(_unknown_counts), indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
 
 
 # pynput-navn som avviker fra nøkkelnavnene i grammatikken.
@@ -153,6 +179,7 @@ def main() -> None:
     print("--------------------------------------------------")
 
     setup_logging(cfg)
+    _load_unknown_counts()
     show_unknown_summary()
 
     ui_queue: queue.Queue[callable] = queue.Queue()
@@ -250,6 +277,7 @@ def _worker(recorder: _FocusRecorder, clip: Clip, cmd, overlay: StatusOverlay) -
     if status != "ok":
         normalized = heard.strip().rstrip('.').lower()
         _unknown_counts[normalized] += 1
+        _save_unknown_counts()
         count = _unknown_counts[normalized]
         logger.info("Ukjent kommando #%d: %r", count, heard)
         label = heard[:30] if heard else "ingen tale"
